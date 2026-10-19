@@ -1,0 +1,61 @@
+﻿# EmploiCamer — Backend FastAPI
+
+## Preview local
+
+```powershell
+cd backend
+Copy-Item .env.example .env
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+The backend uses SQLite locally when `DATABASE_URL` is unset. If the existing
+local Oracle XE 11 client exists at its legacy path, it is detected automatically;
+otherwise set `ORACLE_CLIENT_LIB_DIR`. The API is at `http://127.0.0.1:8000`
+and its interactive docs are at `/docs`.
+
+## Déploiement preview en ligne
+
+A Render Blueprint is included in `backend/render.yaml`; create a new Render Blueprint from the backend repository to create the Docker web service and its PostgreSQL database in Frankfurt. The free PostgreSQL tier is for short previews: Render deletes it after 30 days unless upgraded. The free web service can spin down while idle. These free-tier limits are documented by [Render](https://render.com/docs/free).
+
+- `APP_ENV=preview`
+- `DATABASE_URL` set to the isolated managed PostgreSQL database URL
+- `SECRET_KEY` set to a fresh random value of at least 32 characters
+- `CORS_ORIGINS` as a comma-separated list of allowed browser origins
+
+The Docker image listens on the platform's `PORT`. PostgreSQL URLs beginning
+with `postgres://` and `postgresql://` are supported. SQLite is for local use;
+host container filesystems may be temporary.
+
+Create the first administrator from the deployed backend's service shell after
+the database variables are configured:
+
+```bash
+python -m app.create_admin
+```
+
+This prompts for the email, display name, and password. Admin accounts cannot be
+created through public registration. All API routers except `/auth/register`
+and `/auth/login` require a bearer token. Administrative routes require the
+admin role; profile, company, job, application, messaging, alert, notification,
+favorite, and interview operations check the associated user or company owner.
+
+## Build Android preview
+
+For local builds, put `EXPO_PUBLIC_API_BASE_URL` in
+`afrijob-connect/.env.local`. For EAS cloud builds, set it in the EAS `preview`
+environment because `.env.local` is ignored by Git and is not uploaded:
+
+```bash
+cd afrijob-connect
+npx eas-cli env:set --name EXPO_PUBLIC_API_BASE_URL --value https://YOUR-API-HOST --environment preview --visibility plaintext
+npx eas-cli build --profile preview --platform android
+```
+
+The API URL is included in the app bundle and is public; never put credentials
+in it. The existing `eas.json` uses the EAS `preview` environment and internal
+distribution. EAS Build requires an authenticated Expo account and a configured
+project. Use isolated preview data; do not point this build at production data.
+
