@@ -29,15 +29,30 @@ The Docker image listens on the platform's `PORT`. PostgreSQL URLs beginning
 with `postgres://` and `postgresql://` are supported. SQLite is for local use;
 host container filesystems may be temporary.
 
-Create the first administrator from the deployed backend's service shell after
-the database variables are configured:
+Create the first administrator with `python -m app.create_admin`. Render Free
+web services do not provide a shell, so run this command from a local checkout
+connected to the Render database's **External Database URL** (Dashboard ? your
+Postgres database ? Connect ? External Database URL). It must begin with
+`postgresql://` or `postgres://`; paste only the URL, without `DATABASE_URL=`. Do
+not use the local Oracle URL, paste the URL into chat, or commit it.
 
-```bash
-python -m app.create_admin
+In PowerShell, from the `backend` directory, install the requirements if needed,
+then enter the database URL without echoing it and run the prompt:
+
+```powershell
+$secureUrl = Read-Host 'Render External Database URL' -AsSecureString
+$env:DATABASE_URL = [System.Net.NetworkCredential]::new('', $secureUrl).Password
+if ($env:DATABASE_URL -notmatch '^postgres(?:ql)?://') {
+  Remove-Item Env:DATABASE_URL
+  throw 'Use only the Render External Database URL (postgres:// or postgresql://).'
+}
+try { python -m app.create_admin } finally { Remove-Item Env:DATABASE_URL }
 ```
 
-This prompts for the email, display name, and password. Admin accounts cannot be
-created through public registration. All API routers except `/auth/register`
+The script prompts for the admin email, display name, and a password of at least
+12 characters. Then use the **Admin** option on the app's login screen. Admin
+accounts cannot be created through public registration. Render documents the
+Free-service shell limitation [here](https://render.com/docs/ssh). All API routers except `/auth/register`
 and `/auth/login` require a bearer token. Administrative routes require the
 admin role; profile, company, job, application, messaging, alert, notification,
 favorite, and interview operations check the associated user or company owner.

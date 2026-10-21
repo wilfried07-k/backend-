@@ -5,11 +5,16 @@ from sqlmodel import Session, SQLModel, select
 
 from . import models
 from .auth import hash_password
-from .database import engine
+from .database import DATABASE_URL, engine
 from .models import AccountType, User
 
 
 def main() -> None:
+    if not DATABASE_URL.startswith("postgresql+psycopg://"):
+        raise SystemExit(
+            "Expected Render PostgreSQL. Set DATABASE_URL to the External Database URL "
+            "from Render (postgres:// or postgresql://); do not use the local Oracle URL."
+        )
     SQLModel.metadata.create_all(engine)
     email = input("Adresse e-mail administrateur: ").strip().lower()
     full_name = input("Nom affiché: ").strip()

@@ -67,7 +67,7 @@ class User(SQLModel, table=True):
 
 class CandidateProfile(SQLModel, table=True):
     """
-    Profil détaillé d'un candidat.
+    Profil dÃ©taillÃ© d'un candidat.
     """
 
     __tablename__ = "candidate_profiles"
@@ -116,7 +116,7 @@ class CandidateProfile(SQLModel, table=True):
 
 class Company(SQLModel, table=True):
     """
-    Profil entreprise lié au compte recruteur.
+    Profil entreprise liÃ© au compte recruteur.
     """
 
     __tablename__ = "companies"
@@ -161,7 +161,7 @@ class Company(SQLModel, table=True):
 
 class JobOffer(SQLModel, table=True):
     """
-    Offre d'emploi publiée par un recruteur.
+    Offre d'emploi publiÃ©e par un recruteur.
     """
 
     __tablename__ = "job_offers"
@@ -217,7 +217,7 @@ class JobOffer(SQLModel, table=True):
 
 class Application(SQLModel, table=True):
     """
-    Candidature d'un candidat à une offre.
+    Candidature d'un candidat Ã  une offre.
     """
 
     __tablename__ = "applications"
@@ -236,7 +236,7 @@ class Application(SQLModel, table=True):
     )
 
     status: str = Field(
-        default="Envoyée",
+        default="EnvoyÃ©e",
         max_length=50
     )
 
@@ -258,7 +258,7 @@ class Application(SQLModel, table=True):
 
 class SavedJob(SQLModel, table=True):
     """
-    Offre sauvegardée en favori par un candidat.
+    Offre sauvegardÃ©e en favori par un candidat.
     """
 
     __tablename__ = "saved_jobs"
@@ -353,7 +353,7 @@ class Message(SQLModel, table=True):
 
 class Interview(SQLModel, table=True):
     """
-    Entretien planifié pour une candidature.
+    Entretien planifiÃ© pour une candidature.
     """
 
     __tablename__ = "interviews"
@@ -380,7 +380,7 @@ class Interview(SQLModel, table=True):
     )
 
     status: str = Field(
-        default="Planifié",
+        default="PlanifiÃ©",
         max_length=50
     )
 
@@ -553,3 +553,212 @@ class BannedAccount(SQLModel, table=True):
     active: bool = Field(
         default=True
     )
+class DipeDeclaration(SQLModel, table=True):
+    """Déclaration d'embauche préparée dans l'application, à transmettre à la CNPS."""
+
+    __tablename__ = "dipe_declarations"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    reference: str = Field(max_length=80, unique=True, index=True)
+    company_id: int = Field(foreign_key="companies.id", index=True)
+    candidate_id: int = Field(foreign_key="candidate_profiles.id", index=True)
+    declared_by_user_id: int = Field(foreign_key="users.id")
+    contract_type: str = Field(max_length=50)
+    start_date: str = Field(max_length=10)
+    gross_salary: int
+    risk_rate_percent: float
+    existing_matricule: Optional[str] = Field(default=None, max_length=100)
+    candidate_cni: Optional[str] = Field(default=None, max_length=100)
+    status: str = Field(default="À transmettre à la CNPS", max_length=80)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+class SupportTicket(SQLModel, table=True):
+    __tablename__ = "support_tickets"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    category: str = Field(max_length=80)
+    subject: str = Field(max_length=255)
+    body: str = Field(max_length=4000)
+    status: str = Field(default="Ouvert", max_length=40)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProductFeedback(SQLModel, table=True):
+    __tablename__ = "product_feedback"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    applications_rating: int
+    usability_rating: int
+    value_rating: int
+    comment: Optional[str] = Field(default=None, max_length=4000)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CompanyReview(SQLModel, table=True):
+    """Anonymous employee review attached to a company."""
+
+    __tablename__ = "company_reviews"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="companies.id", index=True)
+    author_user_id: int = Field(foreign_key="users.id", index=True)
+    rating: int
+    role: Optional[str] = Field(default=None, max_length=255)
+    body: str = Field(max_length=4000)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+class CareerExperience(SQLModel, table=True):
+    """Candidate-maintained work history; not an official social-security record."""
+
+    __tablename__ = "career_experiences"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    candidate_id: int = Field(foreign_key="candidate_profiles.id", index=True)
+    employer: str = Field(max_length=255)
+    job_title: str = Field(max_length=255)
+    start_date: datetime
+    end_date: Optional[datetime] = None
+    description: Optional[str] = Field(default=None, max_length=4000)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+class InterviewReport(SQLModel, table=True):
+    """Recruiter notes and assessment attached to a scheduled interview."""
+
+    __tablename__ = "interview_reports"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    interview_id: int = Field(foreign_key="interviews.id", unique=True, index=True)
+    recruiter_user_id: int = Field(foreign_key="users.id")
+    notes: Optional[str] = Field(default=None, max_length=4000)
+    positives: Optional[str] = Field(default=None, max_length=4000)
+    concerns: Optional[str] = Field(default=None, max_length=4000)
+    technical_rating: Optional[int] = None
+    communication_rating: Optional[int] = None
+    soft_skills_rating: Optional[int] = None
+    impressions: Optional[str] = Field(default=None, max_length=4000)
+    recommendation: Optional[str] = Field(default=None, max_length=30)
+    status: str = Field(default="Brouillon", max_length=30)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+class SkillAssessment(SQLModel, table=True):
+    """Persisted result of an in-app skills quiz; not an external accreditation."""
+
+    __tablename__ = "skill_assessments"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    candidate_id: int = Field(foreign_key="candidate_profiles.id", index=True)
+    test_id: str = Field(max_length=80, index=True)
+    test_name: str = Field(max_length=255)
+    score: int
+    total_questions: int
+    percentage: int
+    badge: str = Field(max_length=40)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+class CompanyDirectorProfile(SQLModel, table=True):
+    """Private director contact profile for the owning recruiter."""
+
+    __tablename__ = "company_director_profiles"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="companies.id", unique=True, index=True)
+    full_name: str = Field(max_length=255)
+    title: str = Field(max_length=150)
+    professional_email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    identity_status: str = Field(default="Non vérifiée", max_length=40)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+class ReferralCode(SQLModel, table=True):
+    __tablename__ = "referral_codes"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", unique=True, index=True)
+    code: str = Field(max_length=32, unique=True, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Referral(SQLModel, table=True):
+    __tablename__ = "referrals"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    referrer_user_id: int = Field(foreign_key="users.id", index=True)
+    referred_user_id: int = Field(foreign_key="users.id", unique=True, index=True)
+    referral_code: str = Field(max_length=32)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+class CandidateProject(SQLModel, table=True):
+    """Project published by a candidate in their portfolio."""
+
+    __tablename__ = "candidate_projects"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    candidate_id: int = Field(foreign_key="candidate_profiles.id", index=True)
+    title: str = Field(max_length=255)
+    description: str = Field(max_length=4000)
+    skills: Optional[str] = Field(default=None, max_length=1000)
+    url: Optional[str] = Field(default=None, max_length=500)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+class NotificationPreference(SQLModel, table=True):
+    """Per-user delivery and notification category preferences."""
+
+    __tablename__ = "notification_preferences"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", unique=True, index=True)
+    push_enabled: bool = True
+    email_enabled: bool = True
+    jobs: bool = True
+    messages: bool = True
+    applications: bool = True
+    interviews: bool = True
+    news: bool = False
+    marketing: bool = False
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+class BillingPayment(SQLModel, table=True):
+    """Manual payment request; a provider or admin must verify the transaction."""
+
+    __tablename__ = "billing_payments"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    company_id: int = Field(foreign_key="companies.id", index=True)
+    plan: str = Field(max_length=40)
+    amount_xaf: int
+    payment_method: str = Field(max_length=40)
+    external_reference: Optional[str] = Field(default=None, max_length=120)
+    status: str = Field(default="En attente de paiement", max_length=40, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    reviewed_at: Optional[datetime] = None
+    reviewed_by_user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+class BillingSubscription(SQLModel, table=True):
+    """Verified company plan period."""
+
+    __tablename__ = "billing_subscriptions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="companies.id", unique=True, index=True)
+    plan: str = Field(max_length=40)
+    starts_at: datetime
+    expires_at: datetime
+    status: str = Field(default="Actif", max_length=30)
+class MarketingCampaign(SQLModel, table=True):
+    """Persisted campaign draft and its audience estimate; delivery requires a provider."""
+
+    __tablename__ = "marketing_campaigns"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_by_user_id: int = Field(foreign_key="users.id", index=True)
+    name: str = Field(max_length=160)
+    channel: str = Field(max_length=20)
+    content: str = Field(max_length=4000)
+    audience_segment: str = Field(max_length=30)
+    audience_size: int = Field(default=0)
+    status: str = Field(default="Brouillon", max_length=40)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+class CompanyKycReview(SQLModel, table=True):
+    """Latest administrative KYC review state for a company."""
+
+    __tablename__ = "company_kyc_reviews"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="companies.id", unique=True, index=True)
+    reviewed_by_user_id: int = Field(foreign_key="users.id")
+    status: str = Field(default="En attente", max_length=40)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

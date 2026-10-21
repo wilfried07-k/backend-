@@ -1,9 +1,12 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlmodel import Session
-from ..models import CandidateProfile
+from sqlmodel import Session, select
+from ..models import CandidateProfile, Company, DipeDeclaration, User
 from ..database import get_session
-from ..auth import get_current_user, require_company_owner
+from ..auth import get_current_user, require_admin, require_company_owner
 
 router = APIRouter(prefix="/cnps", tags=["cnps"], dependencies=[Depends(get_current_user)])
 
@@ -31,6 +34,16 @@ class ContributionBreakdown(BaseModel):
     employee_total: float
     grand_total: float
 
+
+@router.get("/admin/summary", dependencies=[Depends(require_admin)])
+def cnps_admin_summary(session: Session = Depends(get_session)):
+    from sqlalchemy import func
+    return {
+        "dipe_declarations_total": session.exec(select(func.count(DipeDeclaration.id))).one(),
+        "dipe_pending_transmission": session.exec(select(func.count(DipeDeclaration.id)).where(DipeDeclaration.status != "Transmise à la CNPS")).one(),
+        "companies_total": session.exec(select(func.count(Company.id))).one(),
+        "companies_verified": session.exec(select(func.count(Company.id)).where(Company.kyc_verified == True)).one(),
+    }
 
 @router.post("/cotisations/calculer", response_model=ContributionBreakdown)
 def calculer_cotisations(payload: ContributionRequest):
@@ -77,40 +90,88 @@ class DipeDeclarationRequest(BaseModel):
 
 
 class DipeDeclarationResponse(BaseModel):
+    id: int
     declaration_id: str
+    candidate_id: int
+    candidate_name: Optional[str] = None
+    contract_type: str
+    start_date: str
+    gross_salary: int
+    risk_rate_percent: float
     status: str
-    message: str
+    created_at: datetime
+    message: Optional[str] = None
 
 
 @router.post("/declarations/dipe", response_model=DipeDeclarationResponse)
 def declarer_embauche(payload: DipeDeclarationRequest, session: Session = Depends(get_session), current_user=Depends(get_current_user)):
-    """
-    Correspond au formulaire de DeclarationEmbaucheScreen.
-
-    IMPORTANT â€” Ã©tat actuel rÃ©aliste : la CNPS n'expose pas (Ã  notre
-    connaissance) d'API publique de tÃ©lÃ©dÃ©claration DIPE. Cet endpoint
-    prÃ©pare et valide les donnÃ©es au bon format ; en pratique, tant qu'un
-    partenariat API n'est pas signÃ© avec la CNPS, il faut soit :
-      1) gÃ©nÃ©rer un export (CSV/PDF) que le recruteur soumet lui-mÃªme sur
-         cnps.cm, soit
-      2) stocker la dÃ©claration en base pour un traitement/export groupÃ©.
-    Ce squelette fait l'option 2 (Ã  complÃ©ter avec la vraie logique de
-    stockage en base une fois les modÃ¨les Declaration crÃ©Ã©s).
-    """
     require_company_owner(payload.company_id, session, current_user)
     candidate = session.get(CandidateProfile, payload.candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Profil candidat introuvable")
-    # TODO : persister en base (table Declaration), puis génération PDF/export
-    declaration_id = f"DIPE-{payload.company_id}-{payload.candidate_id}"
+    if payload.gross_salary <= 0:
+        raise HTTPException(status_code=422, detail="Le salaire doit être supérieur à zéro")
+    try:
+        start_date = datetime.strptime(payload.start_date, "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="La date doit être au format AAAA-MM-JJ")
+    if payload.risk_rate_percent not in (1.75, 2.5, 3.5, 5.0):
+        raise HTTPException(status_code=422, detail="Catégorie de risque invalide")
+    company = session.get(Company, payload.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Entreprise introuvable")
+
+    declaration = DipeDeclaration(
+        reference=f"DIPE-{payload.company_id}-{uuid4().hex[:12].upper()}",
+        company_id=payload.company_id,
+        candidate_id=payload.candidate_id,
+        declared_by_user_id=current_user.id,
+        contract_type=payload.contract_type,
+        start_date=start_date,
+        gross_salary=payload.gross_salary,
+        risk_rate_percent=payload.risk_rate_percent,
+        existing_matricule=payload.existing_matricule,
+        candidate_cni=payload.candidate_cni,
+    )
+    session.add(declaration)
+    session.commit()
+    session.refresh(declaration)
+    user = session.get(User, candidate.user_id)
     return DipeDeclarationResponse(
-        declaration_id=declaration_id,
-        status="en_attente_transmission",
-        message=(
-            "DÃ©claration enregistrÃ©e. En l'absence d'API CNPS directe, "
-            "un export sera gÃ©nÃ©rÃ© pour transmission manuelle sous 8 jours."
-        ),
+        id=declaration.id,
+        declaration_id=declaration.reference,
+        candidate_id=declaration.candidate_id,
+        candidate_name=user.full_name if user else None,
+        contract_type=declaration.contract_type,
+        start_date=declaration.start_date,
+        gross_salary=declaration.gross_salary,
+        risk_rate_percent=declaration.risk_rate_percent,
+        status=declaration.status,
+        created_at=declaration.created_at,
+        message="Déclaration enregistrée dans l'application. Elle doit encore être transmise à la CNPS.",
     )
 
 
-
+@router.get("/declarations/company/{company_id}", response_model=list[DipeDeclarationResponse])
+def list_company_dipe_declarations(company_id: int, session: Session = Depends(get_session), current_user=Depends(get_current_user)):
+    require_company_owner(company_id, session, current_user)
+    declarations = session.exec(
+        select(DipeDeclaration).where(DipeDeclaration.company_id == company_id).order_by(DipeDeclaration.created_at.desc())
+    ).all()
+    results = []
+    for declaration in declarations:
+        candidate = session.get(CandidateProfile, declaration.candidate_id)
+        user = session.get(User, candidate.user_id) if candidate else None
+        results.append(DipeDeclarationResponse(
+            id=declaration.id,
+            declaration_id=declaration.reference,
+            candidate_id=declaration.candidate_id,
+            candidate_name=user.full_name if user else None,
+            contract_type=declaration.contract_type,
+            start_date=declaration.start_date,
+            gross_salary=declaration.gross_salary,
+            risk_rate_percent=declaration.risk_rate_percent,
+            status=declaration.status,
+            created_at=declaration.created_at,
+        ))
+    return results

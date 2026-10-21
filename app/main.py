@@ -1,4 +1,4 @@
-﻿import os
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +20,14 @@ from .routers import (
     notifications,
     alerts,
     admin,
+    support,
+    reviews,
+    career,
+    assessments,
+    referrals,
+    portfolio,
+    billing,
+    reports,
 )
 
 app = FastAPI(
@@ -54,6 +62,14 @@ app.include_router(interviews.router)
 app.include_router(notifications.router)
 app.include_router(alerts.router)
 app.include_router(admin.router)
+app.include_router(support.router)
+app.include_router(reviews.router)
+app.include_router(career.router)
+app.include_router(assessments.router)
+app.include_router(referrals.router)
+app.include_router(portfolio.router)
+app.include_router(billing.router)
+app.include_router(reports.router)
 
 
 @app.on_event("startup")

@@ -1,16 +1,18 @@
-﻿from typing import Optional
+from typing import Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from pydantic import BaseModel
 from ..database import get_session
 from ..auth import get_current_user, require_owner
-from ..models import CandidateProfile, Company, User
+from ..models import CandidateProfile, Company, CompanyDirectorProfile, CandidateProject, SkillAssessment, User
 
 router = APIRouter(prefix="/profile", tags=["profile"], dependencies=[Depends(get_current_user)])
 
 
 class CandidateProfileUpsert(BaseModel):
     user_id: int
+    full_name: Optional[str] = None
     job_title: Optional[str] = None
     city: Optional[str] = None
     summary: Optional[str] = None
@@ -83,7 +85,11 @@ def upsert_candidate_profile(payload: CandidateProfileUpsert, session: Session =
         select(CandidateProfile).where(CandidateProfile.user_id == payload.user_id)
     ).first()
 
-    data = payload.dict(exclude={"user_id"})
+    if payload.full_name is not None:
+        user.full_name = payload.full_name.strip()
+        session.add(user)
+
+    data = payload.dict(exclude={"user_id", "full_name"})
     if profile:
         for field, value in data.items():
             if value is not None:
@@ -106,7 +112,12 @@ def get_candidate_profile(candidate_id: int, session: Session = Depends(get_sess
     user = session.get(User, profile.user_id)
     if user and user.id != current_user.id and current_user.account_type.value not in ("recruiter", "admin"):
         raise HTTPException(status_code=403, detail="Accès réservé au candidat concerné ou à un recruteur")
+    assessments = session.exec(select(SkillAssessment).where(SkillAssessment.candidate_id == profile.id).order_by(SkillAssessment.created_at.desc())).all()
+    projects = session.exec(select(CandidateProject).where(CandidateProject.candidate_id == profile.id).order_by(CandidateProject.created_at.desc())).all()
     return {
+        "assessments": [{"id": item.id, "test_name": item.test_name, "score": item.score, "total_questions": item.total_questions, "percentage": item.percentage, "badge": item.badge, "created_at": item.created_at.isoformat()} for item in assessments],
+        "projects": [{"id": item.id, "title": item.title, "description": item.description, "skills": item.skills.split(", ") if item.skills else [], "url": item.url, "created_at": item.created_at.isoformat()} for item in projects],
+
         "id": profile.id,
         "full_name": user.full_name if user else None,
         "email": user.email if user else None,
@@ -172,3 +183,50 @@ def get_company(company_id: int, session: Session = Depends(get_session)):
 
 
 
+
+class CompanyDirectorProfileInput(BaseModel):
+    full_name: str
+    title: str
+    professional_email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+def get_owned_company(current_user: User, session: Session) -> Company:
+    if current_user.account_type.value not in ("recruiter", "admin"):
+        raise HTTPException(status_code=403, detail="Un compte recruteur est requis")
+    company = session.exec(select(Company).where(Company.owner_user_id == current_user.id)).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Créez d’abord le profil de votre entreprise")
+    return company
+
+
+@router.get("/company/me/director", response_model=Optional[CompanyDirectorProfile])
+def get_company_director(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    company = get_owned_company(current_user, session)
+    return session.exec(select(CompanyDirectorProfile).where(CompanyDirectorProfile.company_id == company.id)).first()
+
+
+@router.put("/company/me/director", response_model=CompanyDirectorProfile)
+def upsert_company_director(payload: CompanyDirectorProfileInput, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    company = get_owned_company(current_user, session)
+    full_name = payload.full_name.strip()
+    title = payload.title.strip()
+    if not full_name or not title:
+        raise HTTPException(status_code=400, detail="Le nom et la fonction sont obligatoires")
+    profile = session.exec(select(CompanyDirectorProfile).where(CompanyDirectorProfile.company_id == company.id)).first()
+    values = {
+        "full_name": full_name,
+        "title": title,
+        "professional_email": payload.professional_email.strip() or None if payload.professional_email else None,
+        "phone": payload.phone.strip() or None if payload.phone else None,
+        "updated_at": datetime.utcnow(),
+    }
+    if profile:
+        for key, value in values.items():
+            setattr(profile, key, value)
+    else:
+        profile = CompanyDirectorProfile(company_id=company.id, **values)
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    return profile

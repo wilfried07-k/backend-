@@ -25,6 +25,7 @@ class ApplicationDetail(BaseModel):
     job_offer_id: int
     job_title: str
     company_name: Optional[str]
+    company_id: Optional[int] = None
     status: str
     match_score: Optional[float]
     created_at: str
@@ -89,6 +90,7 @@ def list_candidate_applications(candidate_id: int, session: Session = Depends(ge
             job_offer_id=app_.job_offer_id,
             job_title=job.title if job else "Offre supprimÃ©e",
             company_name=company.name if company else None,
+            company_id=job.company_id if job else None,
             status=app_.status,
             match_score=app_.match_score,
             created_at=app_.created_at.isoformat(),
